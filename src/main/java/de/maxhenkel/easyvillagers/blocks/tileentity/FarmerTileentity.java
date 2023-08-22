@@ -10,38 +10,37 @@ import de.maxhenkel.easyvillagers.entity.EasyVillagerEntity;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.core.NonNullList;
-import net.minecraft.core.Registry;
 import net.minecraft.core.registries.BuiltInRegistries;
-import net.minecraft.core.registries.Registries;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.NbtUtils;
-import net.minecraft.nbt.Tag;
-import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.sounds.SoundEvents;
+import net.minecraft.util.RandomSource;
 import net.minecraft.world.Container;
 import net.minecraft.world.ContainerHelper;
 import net.minecraft.world.entity.npc.VillagerProfession;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
-import net.minecraft.world.item.Items;
 import net.minecraft.world.level.block.Block;
-import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.state.BlockState;
-import net.minecraft.world.level.block.state.StateDefinition;
-import net.minecraft.world.level.block.state.StateHolder;
 import net.minecraft.world.level.block.state.properties.IntegerProperty;
 import net.minecraft.world.level.block.state.properties.Property;
-import net.minecraft.world.level.storage.loot.LootContext;
 import net.minecraft.world.level.storage.loot.LootParams;
 import net.minecraft.world.level.storage.loot.parameters.LootContextParams;
 import net.minecraft.world.phys.Vec3;
+import net.minecraftforge.common.ForgeConfig;
 import net.minecraftforge.common.IPlantable;
 import net.minecraftforge.common.PlantType;
+import net.minecraftforge.common.Tags;
 import net.minecraftforge.common.capabilities.Capability;
 import net.minecraftforge.common.capabilities.ForgeCapabilities;
 import net.minecraftforge.common.util.LazyOptional;
+import net.minecraftforge.fml.ModList;
 import net.minecraftforge.items.ItemStackHandler;
+import net.minecraftforge.registries.ForgeRegistries;
+import vectorwing.farmersdelight.FarmersDelight;
+import vectorwing.farmersdelight.common.block.BuddingBushBlock;
+import vectorwing.farmersdelight.common.registry.ModItems;
 
 import javax.annotation.Nullable;
 import java.util.List;
@@ -54,7 +53,6 @@ public class FarmerTileentity extends VillagerTileentity implements IServerTicka
 
     protected LazyOptional<OutputItemHandler> outputItemHandler;
     protected ItemStackHandler itemHandler;
-
     public FarmerTileentity(BlockPos pos, BlockState state) {
         super(ModTileEntities.FARMER.get(), ModBlocks.FARMER.get().defaultBlockState(), pos, state);
         inventory = NonNullList.withSize(4, ItemStack.EMPTY);
@@ -95,17 +93,15 @@ public class FarmerTileentity extends VillagerTileentity implements IServerTicka
     }
 
     public BlockState getSeedCrop(Item seed) {
-        if (seed == Items.WHEAT_SEEDS) {
-            return Blocks.WHEAT.defaultBlockState();
-        } else if (seed == Items.POTATO) {
-            return Blocks.POTATOES.defaultBlockState();
-        } else if (seed == Items.CARROT) {
-            return Blocks.CARROTS.defaultBlockState();
-        } else if (seed == Items.BEETROOT_SEEDS) {
-            return Blocks.BEETROOTS.defaultBlockState();
-        } else if (seed instanceof IPlantable) {
-            IPlantable plantable = (IPlantable) seed;
+        var cropBlock = Block.byItem(seed);
+        if (cropBlock instanceof IPlantable) {
+            var plantable = (IPlantable) cropBlock;
             if (plantable.getPlantType(level, getBlockPos()) == PlantType.CROP) { //TODO fake world
+                if (ModList.get().isLoaded(FarmersDelight.MODID)) {
+                    if(cropBlock instanceof BuddingBushBlock buddingCropBlock) {
+                        return buddingCropBlock.defaultBlockState();
+                    }
+                }
                 return plantable.getPlant(level, getBlockPos());
             }
         }
@@ -149,10 +145,17 @@ public class FarmerTileentity extends VillagerTileentity implements IServerTicka
             return false;
         }
 
-        IntegerProperty p = (IntegerProperty) ageProp.get();
-        Integer max = p.getPossibleValues().stream().max(Integer::compare).get();
+        IntegerProperty ageIntProp = (IntegerProperty) ageProp.get();
+        Integer max = ageIntProp.getPossibleValues().stream().max(Integer::compare).get();
 
-        int age = c.getValue(p);
+        int age = c.getValue(ageIntProp);
+
+        if (crop.getBlock() instanceof BuddingBushBlock buddingCropBlock) {
+            System.out.println(buddingCropBlock.asItem().getDescription().getString() + " is a BuddingBushBlock, age is " + age);
+            if(buddingCropBlock.canGrowPastMaxAge()) {
+                buddingCropBlock.growPastMaxAge(crop, this.getLevel().getServer().getLevel(getLevel().dimension()), getBlockPos(), RandomSource.create());
+            }
+        }
 
         if (age >= max) {
             if (villager == null || villager.isBaby() || !villager.getVillagerData().getProfession().equals(VillagerProfession.FARMER)) {
@@ -166,11 +169,11 @@ public class FarmerTileentity extends VillagerTileentity implements IServerTicka
                 }
             }
 
-            crop = crop.setValue(p, 0);
+            crop = crop.setValue(ageIntProp, 0);
             VillagerBlockBase.playVillagerSound(level, getBlockPos(), SoundEvents.VILLAGER_WORK_FARMER);
             return true;
         } else {
-            crop = crop.setValue(p, age + 1);
+            crop = crop.setValue(ageIntProp, age + 1);
             return true;
         }
     }

@@ -40,3 +40,10 @@ description='''Easy Villagers'''
     versionRange="*"
     ordering="NONE"
     side="BOTH"
+
+[[dependencies.${mod_id}]]
+    modId="farmersdelight"
+    mandatory=false
+    versionRange="*"
+    ordering="NONE"
+    side="BOTH"
